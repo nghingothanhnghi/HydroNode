@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ESP32 MicroPython - Hydroponics Controller
 
 This folder contains the MicroPython source code for the ESP32 controller that manages sensors and actuators in the hydroponic system.
@@ -50,3 +51,7 @@ flowchart TD
 | **Light Relay** | GPIO 14 | Active LOW |
 | **Water Pump Relay** | GPIO 12 | Active LOW |
 | **OLED (SDA/SCL)** | GPIO 21 / 22 | I2C |
+=======
+# HydroNode
+HydroNode is an ESP32-based firmware for smart hydroponic automation, enabling real-time monitoring, sensor data collection, and automated control of pumps, lights, and other devices.
+>>>>>>> c2d21ac998cf14826282f3a08d247a5f868c9cd8
