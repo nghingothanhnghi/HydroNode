@@ -1,7 +1,7 @@
 # control.py
 import urequests as requests
 import config
-from helper import log
+from helper import log, http_request
 from device import shutdown_device, activate_device as activate_device_hardware
 
 def auto_control(data):
@@ -29,7 +29,8 @@ def check_commands(device_id):
     res = None  # ✅ ensure defined
 
     try:
-        res = requests.get(
+        res = http_request(
+            requests.get,
             f"{config.STATUS_URL}?device_id={device_id}",
             headers=config.HEADERS
         )
@@ -41,11 +42,11 @@ def check_commands(device_id):
         if isinstance(payload, list) and payload:
             payload = payload[0]
 
-        log("📡 BACKEND STATUS ↓↓↓", payload, "yellow")
+        log("\U0001F4E1 BACKEND STATUS \u2193\u2193\u2193", payload, "yellow")
 
         # ✅ DEVICE ACTIVE CHECK
         if not payload.get("is_active", True):
-            log("⚠ DEVICE INACTIVE → SHUTDOWN", "red")
+            log("\u26A0 DEVICE INACTIVE \u2192 SHUTDOWN", "red")
             shutdown_device()
             return
 
@@ -69,7 +70,7 @@ def check_commands(device_id):
                 key = config.TYPE_TO_GPIO[name]
 
             else:
-                log(f"⚠ Unknown actuator {name}", "yellow")
+                log(f"\u26A0 Unknown actuator {name}", "yellow")
                 continue
             
             if key not in config.ACTUATOR_STATES:

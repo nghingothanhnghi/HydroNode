@@ -31,6 +31,7 @@ GPIO_TO_TYPE = {v: k for k, v in config.TYPE_TO_GPIO.items()}
 # Runtime tracking
 _last_states = {}
 _last_pwm = {}
+_on_since = {}   # key -> timestamp when this actuator turned ON (relay OR pwm)
 
 # ---------------- VALIDATION ----------------
 def validate_gpio_mapping():
@@ -48,22 +49,16 @@ def validate_gpio_mapping():
 print("=== ⚡ SAFE GPIO INIT ===")
 
 for key, pin in relay_pins.items():
-
     pin.value(RELAY_OFF)
-
     actuator = GPIO_TO_TYPE.get(key, "unknown")
-
     print(
         f"🔌 {actuator.upper()} "
         f"(GPIO {key}) initialized OFF"
     )
 
 for key, pwm in pwm_pins.items():
-
     pwm.duty(0)
-
     actuator = GPIO_TO_TYPE.get(key, "unknown")
-
     print(
         f"💧 {actuator.upper()} "
         f"(GPIO {key}) PWM initialized OFF"
@@ -71,9 +66,36 @@ for key, pwm in pwm_pins.items():
 
 validate_gpio_mapping()
 
+
+def _enforce_max_on_time():
+    """
+    Independent safety net. Runs before we honor backend/config state.
+    If any actuator has been ON longer than MAX_ON_TIME, force it OFF
+    in config.ACTUATOR_STATES (and PUMP_SPEED for PWM), regardless of
+    what the backend last said. This protects hardware even if the
+    backend never sends an "off" command (dropped connection, crash,
+    stuck state, etc).
+    """
+    now = time.time()
+    for key, started in list(_on_since.items()):
+        if now - started > MAX_ON_TIME:
+            actuator = GPIO_TO_TYPE.get(key, "unknown")
+            print(
+                f"\u23F1 SAFETY CUTOFF: {actuator.upper()} (GPIO {key}) "
+                f"exceeded MAX_ON_TIME={MAX_ON_TIME}s -> forcing OFF"
+            )
+            config.ACTUATOR_STATES[key] = 0
+            if key in config.PUMP_SPEED:
+                config.PUMP_SPEED[key] = 0
+            # don't delete from _on_since here — update_relays() will
+            # clear it once it observes the OFF transition below
+
+
 # ---------------- MAIN CONTROL ----------------
 
 def update_relays():
+
+    _enforce_max_on_time()
 
     # ==================================================
     # RELAY DEVICES
@@ -82,12 +104,10 @@ def update_relays():
     for key, pin in relay_pins.items():
 
         actuator = GPIO_TO_TYPE.get(key, "unknown")
-
         # Backend logical state
         # 1 = ON
         # 0 = OFF
         state = config.ACTUATOR_STATES.get(key, 0)
-
         prev = _last_states.get(key)
 
         # Only update on changes
@@ -95,10 +115,8 @@ def update_relays():
 
             # ACTIVE LOW relay logic
             gpio_value = RELAY_ON if state else RELAY_OFF
-
             # Write GPIO
             pin.value(gpio_value)
-
             relay_active = gpio_value == RELAY_ON
 
             # ---------------- HUMAN READABLE STATUS ----------------
@@ -141,6 +159,11 @@ def update_relays():
 
             _last_states[key] = state
 
+            if state:
+                _on_since[key] = time.time()
+            else:
+                _on_since.pop(key, None)            
+
     # ==================================================
     # PWM / MOSFET DEVICES
     # ==================================================
@@ -148,11 +171,8 @@ def update_relays():
     for key, pwm in pwm_pins.items():
 
         actuator = GPIO_TO_TYPE.get(key, "unknown")
-
         state = config.ACTUATOR_STATES.get(key, 0)
-
         speed = config.PUMP_SPEED.get(key, 0)
-
         # Safety clamp
         speed = max(0, min(100, speed))
 
@@ -166,16 +186,13 @@ def update_relays():
             # Default full speed
             if speed == 0:
                 speed = 100
-
             duty = int((speed / 100) * 1023)
 
         prev = _last_pwm.get(key)
 
         # Only update on change
         if prev != duty:
-
             pwm.duty(duty)
-
             print(
                 f"💧 {actuator.upper()} "
                 f"(GPIO {key}) | "
@@ -183,9 +200,12 @@ def update_relays():
                 f"duty={duty} | "
                 f"state={'ON' if state else 'OFF'}"
             )
-
             _last_pwm[key] = duty
 
+            if duty > 0:
+                _on_since.setdefault(key, time.time())
+            else:
+                _on_since.pop(key, None)
 
 # ---------------- TEST GPIO ----------------
 
@@ -196,33 +216,24 @@ def test_single_gpio(gpio="26"):
     # ==================================================
 
     if gpio in relay_pins:
-
         pin = relay_pins[gpio]
-
         actuator = GPIO_TO_TYPE.get(gpio, "unknown")
-
         print(f"\n=== 🧪 TEST RELAY GPIO {gpio} ({actuator}) ===")
 
         while True:
-
             print(
                 f"🔛 {actuator.upper()} | "
                 f"gpio=LOW(0) | "
                 f"relay=ACTIVE"
             )
-
             pin.value(RELAY_ON)
-
             time.sleep(2)
-
             print(
                 f"🔴 {actuator.upper()} | "
                 f"gpio=HIGH(1) | "
                 f"relay=INACTIVE"
             )
-
             pin.value(RELAY_OFF)
-
             time.sleep(2)
 
     # ==================================================
@@ -230,34 +241,21 @@ def test_single_gpio(gpio="26"):
     # ==================================================
 
     elif gpio in pwm_pins:
-
         pwm = pwm_pins[gpio]
-
         actuator = GPIO_TO_TYPE.get(gpio, "unknown")
-
         print(f"\n=== 🧪 TEST PWM GPIO {gpio} ({actuator}) ===")
 
         while True:
-
             print(f"💧 {actuator.upper()} → 30%")
-
             pwm.duty(int(0.3 * 1023))
-
             time.sleep(3)
-
             print(f"💧 {actuator.upper()} → 70%")
-
             pwm.duty(int(0.7 * 1023))
-
             time.sleep(3)
-
             print(f"💧 {actuator.upper()} → OFF")
-
             pwm.duty(0)
-
             time.sleep(3)
 
     else:
-
         print(f"❌ GPIO {gpio} not found")
 

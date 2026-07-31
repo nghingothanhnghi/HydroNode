@@ -2,6 +2,7 @@
 
 import urequests as requests
 import config
+from helper import http_request
 
 def register_actuators(device_id):
     actuators = [
@@ -43,21 +44,25 @@ def register_actuators(device_id):
     ]
 
     existing_types = set()
+    res = None
 
     try:
-        res = requests.get(
+
+        res = http_request(
+            requests.get,
             f"{config.ACTUATOR_URL}/device/{device_id}",
             headers=config.HEADERS
-        )
+        )        
 
         if res.status_code == 200:
             existing = res.json()
             existing_types = {a["type"] for a in existing}
 
-        res.close()  # ✅ IMPORTANT
-
     except Exception as e:
         print("[!] Could not fetch existing actuators:", e)
+    finally:
+        if res:
+            res.close()        
 
     to_register = [a for a in actuators if a["type"] not in existing_types]
 
@@ -65,8 +70,10 @@ def register_actuators(device_id):
         print("[✓] All actuators already registered for device:", config.DEVICE_CODE)
         return
 
+    res = None
     try:
-        res = requests.post(
+        res = http_request(
+            requests.post,
             config.ACTUATOR_BULK_URL,
             json=to_register,
             headers=config.HEADERS
@@ -77,7 +84,8 @@ def register_actuators(device_id):
         else:
             print(f"[!] Bulk registration failed ({res.status_code}): {res.text}")
 
-        res.close()  # ✅ IMPORTANT
-
     except Exception as e:
         print("[!] Bulk registration error:", e)
+    finally:
+        if res:
+            res.close()

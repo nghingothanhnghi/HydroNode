@@ -1,4 +1,6 @@
-import time, urequests as requests
+from helper import http_request
+import time, machine, urequests as requests
+from machine import WDT
 from wifi import connect_wifi, test_backend, test_gateway
 from device import get_or_register_device
 from actuators import register_actuators
@@ -8,25 +10,40 @@ from relay import update_relays, test_single_gpio
 from control import auto_control, check_commands
 import config
 
+
+# ---------------- WATCHDOG ----------------
+# NOTE: once started, the ESP32 WDT cannot be disabled or re-configured —
+# it will reset the device if `wdt.feed()` isn't called within `timeout`.
+# 30s gives generous headroom over one loop iteration (~0.2-1s normally,
+# or a bit more if WiFi/backend calls are slow) while still guaranteeing
+# recovery from a true hang.
+wdt = WDT(timeout=30000)  # ms
+
+
 def main():
     print("=== ESP32 BOOT ===")
     print("DEVICE_CODE:", config.DEVICE_CODE)
     time.sleep(2)  # allow hardware to stabilize
+    wdt.feed()
     
     # 1️⃣ Connect to WiFi (after short delay)
     wlan = connect_wifi()
+    wdt.feed()
     test_gateway()
     test_backend()
     
     device_id, device_name = None, None
     while not device_id:
         device_id, device_name = get_or_register_device()
+        wdt.feed()
         if not device_id:
             print("[✗] No device ID, retrying in", config.RETRY_DELAY, "sec")
             time.sleep(config.RETRY_DELAY)
+            wdt.feed()
 
     # 2️⃣ Register actuators in backend
     register_actuators(device_id)
+    wdt.feed()
 
     last_send = 0
     last_oled = 0 
@@ -34,6 +51,7 @@ def main():
     wifi_status = "WiFi: OK"
     
     while True:
+        wdt.feed()
         now = time.time()
         # 3️⃣ Safer WiFi reconnect with OLED status
         if not wlan.isconnected():
@@ -42,6 +60,7 @@ def main():
                 print("[WiFi] Disconnected, reconnecting...")
                 last_wifi_check = now
                 wlan = connect_wifi()
+                wdt.feed()
         else:
             wifi_status = "WiFi: OK"
             
@@ -60,18 +79,26 @@ def main():
                 "client_id": config.CLIENT_ID,
                 "data": sensor_data
             }
+
+            res = None
             try:
-                res = requests.post(
+                res = http_request(
+                    requests.post,
                     config.SENSOR_URL,
                     json=payload,
                     headers=config.HEADERS
                 )
                 print("[→] Sent data:", res.status_code, payload)
-                res.close()   # memory safety
+
             except Exception as e:
                 print("[!] Send error:", e)
-                  
+            finally:
+                if res:
+                    res.close()
+
+            wdt.feed()
             check_commands(device_id)
+            wdt.feed()
 
         # 6️⃣ Update display and relays
         if now - last_oled >= 1:
@@ -97,7 +124,8 @@ try:
 except Exception as e:
     print("[BOOT ERROR]", e)
     time.sleep(5)
-    
+    print("[BOOT ERROR] Resetting device...")
+    machine.reset()    
     
 # =========================
 # 🔥 ENTRY POINT

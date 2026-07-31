@@ -28,3 +28,23 @@ def log(title, data=None, color="cyan"):
     if data is not None:
         print(pretty(data))
 
+def http_request(method, url, timeout=5, **kwargs):
+    """
+    Wrapper around urequests.get / urequests.post (etc) that enforces a
+    socket timeout so a stalled backend can't hang the whole main loop.
+ 
+    Usage:
+        res = http_request(requests.get, config.DEVICE_URL, headers=config.HEADERS)
+        res = http_request(requests.post, config.DEVICE_URL, json=payload, headers=config.HEADERS)
+ 
+    Some builds of urequests accept a `timeout=` kwarg directly; others
+    don't. We try the modern signature first and fall back gracefully so
+    this works across firmware/library versions without crashing.
+    """
+    try:
+        return method(url, timeout=timeout, **kwargs)
+    except TypeError:
+        # Installed urequests doesn't support timeout=; fall back to a
+        # plain call. Still far better than nothing, and cheap to upgrade
+        # later by vendoring a urequests build that supports timeouts.
+        return method(url, **kwargs)

@@ -4,11 +4,13 @@ import config
 import time
 import machine
 from relay import relay_pins, update_relays
+from helper import http_request
 
 
 def get_or_register_device():
+    res = None
     try:
-        res = requests.get(config.DEVICE_URL, headers=config.HEADERS)
+        res = http_request(requests.get, config.DEVICE_URL, headers=config.HEADERS)
         if res.status_code == 200:
             for device in res.json():
                 if device.get("device_id") == config.DEVICE_CODE:
@@ -16,6 +18,9 @@ def get_or_register_device():
                     return device["id"], device["name"]
     except Exception as e:
         print("[!] Failed to fetch devices:", e)
+    finally:
+        if res:
+            res.close()
 
     payload = {
         "device_id": config.DEVICE_CODE, # DEVICE_CODE got from ESP32, auto generate when connected to BackEnd, added to DB for device_id
@@ -27,8 +32,12 @@ def get_or_register_device():
         "thresholds": {},
         "user_id": config.USER_ID,
     }
+
+    res = None
     try:
-        res = requests.post(config.DEVICE_URL, json=payload, headers=config.HEADERS)
+        res = http_request(
+            requests.post, config.DEVICE_URL, json=payload, headers=config.HEADERS
+        )
         if res.status_code in (200, 201):
             device = res.json()
             print("[✓] Device registered:", config.DEVICE_CODE)
@@ -37,6 +46,10 @@ def get_or_register_device():
             print("[✗] Device registration failed:", res.status_code, res.text)
     except Exception as e:
         print("[!] Register device error:", e)
+    finally:
+        if res:
+            res.close()
+ 
     return None, None
 
 def shutdown_device():
