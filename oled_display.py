@@ -32,6 +32,15 @@ def update_oled(device_name, sensor_data, auto_mode, actuators):
         oled.text("T:{}C".format(sensor_data.get("temperature", "--")), 0, 12)
         oled.text("H:{}%".format(sensor_data.get("humidity", "--")), 64, 12)
 
+
+        # Row 1 – Temperature / Humidity
+        # Append "?" when the reading is a fallback value (DHT read failed) —
+        # otherwise a fake number looks identical to a real one on screen.
+        temp_mark = "" if sensor_data.get("temperature_valid", True) else "?"
+        hum_mark = "" if sensor_data.get("humidity_valid", True) else "?"
+        oled.text("T:{}C{}".format(sensor_data.get("temperature", "--"), temp_mark), 0, 12)
+        oled.text("H:{}%{}".format(sensor_data.get("humidity", "--"), hum_mark), 64, 12)        
+
         # Row 2 – Light / Moisture
         oled.text("L:{}".format(sensor_data.get("light", "--")), 0, 24)
         oled.text("M:{}".format(sensor_data.get("moisture", "--")), 64, 24)

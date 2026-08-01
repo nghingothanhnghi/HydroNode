@@ -94,14 +94,25 @@ def read_sensor_data():
     ec_valid = True
 
     # --- 4️⃣ Final payload (KHÔNG BAO GIỜ None) ---
+    # light / moisture / water_level are still hardcoded stubs (TODO:
+    # wire real sensors). Flagging them invalid now means auto_control()
+    # and the backend can correctly ignore them instead of silently
+    # acting on fabricated numbers.
+
     data = {
         "temperature": float(temp_safe),
+        "temperature_valid": temp_valid,
         "humidity": float(hum_safe),
+        "humidity_valid": hum_valid,
         "light": 500,        # TODO: replace with real sensor
+        "light_valid": False, # TODO: replace with actual sensor validity
         "moisture": 50.0,    # TODO: replace with real sensor
+        "moisture_valid": False, # TODO: replace with actual sensor validity
         "ec": ec,
+        "ec_valid": ec_valid,
         "ppm": ppm,
-        "water_level": 15.0  # TODO: replace with real sensor
+        "water_level": 15.0,  # TODO: replace with real sensor
+        "water_level_valid": False  # TODO: replace with actual sensor validity
     }
 
     # Debug log
