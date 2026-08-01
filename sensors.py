@@ -15,10 +15,18 @@ VREF = 3.3
 EC_CALIBRATION = 2.0
 PPM_FACTOR = 500
 
+# Fallback values used ONLY when a real reading isn't available.
+# These exist so the payload always has a usable number for display/
+# control logic, but they are NEVER to be treated as real data — see
+# the corresponding "_valid" flags in read_sensor_data().
+FALLBACK_TEMP = 25.0
+FALLBACK_HUM = 60.0
+
 # ---------------- DHT READ (SAFE) ----------------
 def read_dht(retries=3, delay=1):
     """
-    Read DHT11 with retry to avoid ETIMEDOUT
+    Read DHT11 with retry to avoid ETIMEDOUT.
+    Returns (temp, hum) on success, or (None, None) if all retries fail.
     """
     for i in range(retries):
         try:
@@ -68,23 +76,32 @@ def read_sensor_data():
     # --- 1️⃣ Read DHT ---
     temp, hum = read_dht()
 
+    temp_valid = temp is not None
+    hum_valid = hum is not None
+
     # --- 2️⃣ Fallback nếu lỗi ---
-    temp_safe = temp if temp is not None else 25.0
-    hum_safe = hum if hum is not None else 60.0
+    # IMPORTANT: these are placeholder numbers so downstream code (OLED,
+    # EC temp-compensation, JSON payload) never has to handle None. They
+    # are NOT measurements. Anything that makes a decision based on
+    # temperature/humidity must check the matching "_valid" flag first
+    # (see control.py::auto_control) rather than trusting the number.
+    temp_safe = temp if temp_valid else FALLBACK_TEMP
+    hum_safe = hum if hum_valid else FALLBACK_HUM
 
     # --- 3️⃣ Read EC ---
     ec = read_ec(temp_safe)
     ppm = ec_to_ppm(ec)
+    ec_valid = True
 
     # --- 4️⃣ Final payload (KHÔNG BAO GIỜ None) ---
     data = {
         "temperature": float(temp_safe),
         "humidity": float(hum_safe),
         "light": 500,        # TODO: replace with real sensor
-        "moisture": 50.0,    # TODO
+        "moisture": 50.0,    # TODO: replace with real sensor
         "ec": ec,
         "ppm": ppm,
-        "water_level": 15.0  # TODO
+        "water_level": 15.0  # TODO: replace with real sensor
     }
 
     # Debug log
