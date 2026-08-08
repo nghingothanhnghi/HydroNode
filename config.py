@@ -3,6 +3,7 @@
 # 🔐 DEVICE ID (unique per ESP32)
 # ================================
 from device_id import get_device_code
+from secrets import AUTH_USERNAME, AUTH_PASSWORD
 
 DEVICE_CODE = get_device_code()
 # 👉 This is sent to backend as `device_id`
@@ -48,8 +49,8 @@ FASTAPI_URL = "http://192.168.1.41:8000"
 #
 # In a real deployment, move these two lines into a separate, untracked
 # secrets.py (gitignored) rather than committing credentials in config.py.
-AUTH_USERNAME = "admin"
-AUTH_PASSWORD = "CHANGE_ME"
+AUTH_USERNAME = AUTH_USERNAME
+AUTH_PASSWORD = AUTH_PASSWORD
  
 CLIENT_ID = "706cfcdc-5e1c-4bae-b159-f66425c81ecc"  # informational only — backend ignores this on writes
 USER_ID = 1                                          # informational only — backend ignores this on writes
