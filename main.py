@@ -8,6 +8,7 @@ from sensors import read_sensor_data
 from oled_display import update_oled
 from relay import update_relays, test_single_gpio
 from control import auto_control, check_commands
+import auth
 import config
 
 
@@ -25,12 +26,18 @@ def main():
     print("DEVICE_CODE:", config.DEVICE_CODE)
     time.sleep(2)  # allow hardware to stabilize
     wdt.feed()
-    
+
     # 1️⃣ Connect to WiFi (after short delay)
     wlan = connect_wifi()
     wdt.feed()
     test_gateway()
     test_backend()
+
+    # 1.5️⃣ Log in and get a fresh token (survives DB wipes + 30-day expiry —
+    # only requires the same username/password to exist on the backend,
+    # never a USB reflash).
+    auth.ensure_logged_in(retry_delay=config.RETRY_DELAY)
+    wdt.feed()    
     
     device_id, device_name = None, None
     while not device_id:
@@ -89,6 +96,13 @@ def main():
                     headers=config.HEADERS
                 )
                 print("[→] Sent data:", res.status_code, payload)
+
+                # 🔑 Token expired mid-session (e.g. hit 30-day expiry, or DB
+                # was wiped+recreated while running) — re-login and the next
+                # cycle will use the fresh token automatically.
+                if res.status_code == 401:
+                    print("[!] Token rejected (401), re-authenticating...")
+                    auth.login()                
 
             except Exception as e:
                 print("[!] Send error:", e)

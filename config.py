@@ -22,19 +22,50 @@ FASTAPI_URL = "http://192.168.1.41:8000"
 # ================================
 # 👤 AUTH / USER CONTEXT
 # ================================
-CLIENT_ID = "706cfcdc-5e1c-4bae-b159-f66425c81ecc"
-USER_ID = 1
+# CLIENT_ID = "706cfcdc-5e1c-4bae-b159-f66425c81ecc"
+# USER_ID = 1
 
-AUTH_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc4MzIzMTk3N30.kKrz17Yv4APknT1Sb5pOu3dzDpUj1glhmQNa6i9Mu7w"
+# AUTH_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc4MzIzMTk3N30.kKrz17Yv4APknT1Sb5pOu3dzDpUj1glhmQNa6i9Mu7w"
 
+# HEADERS = {
+#     "Authorization": "Bearer " + AUTH_TOKEN,
+#     "Content-Type": "application/json"
+# }
+
+# ================================
+# 👤 AUTH / USER CONTEXT
+# ================================
+# ⚠️ CHANGED: no more static AUTH_TOKEN baked into firmware.
+# A static JWT breaks in two independent ways:
+#   1. DB wipe        -> the user it references no longer exists -> 401 forever
+#   2. Natural expiry  -> ACCESS_TOKEN_EXPIRE_MINUTES defaults to 30 days
+#      on the backend -> token dies even with a healthy DB
+#
+# Storing username/password instead and logging in at boot means BOTH
+# problems go away: a DB wipe only requires recreating the same
+# username/password (no reflash), and expiry is irrelevant since a fresh
+# token is minted every boot.
+#
+# In a real deployment, move these two lines into a separate, untracked
+# secrets.py (gitignored) rather than committing credentials in config.py.
+AUTH_USERNAME = "admin"
+AUTH_PASSWORD = "CHANGE_ME"
+ 
+CLIENT_ID = "706cfcdc-5e1c-4bae-b159-f66425c81ecc"  # informational only — backend ignores this on writes
+USER_ID = 1                                          # informational only — backend ignores this on writes
+ 
+# HEADERS starts with no Authorization — auth.login() fills it in at boot
+# (see auth.py) and can refresh it again later if a request comes back 401.
 HEADERS = {
-    "Authorization": "Bearer " + AUTH_TOKEN,
     "Content-Type": "application/json"
 }
 
 # ================================
 # 🔗 API ROUTES (MATCH BACKEND)
 # ================================
+
+# Auth
+LOGIN_URL = FASTAPI_URL + "/auth/login"
 
 # Device (ESP32 registration)
 DEVICE_URL = FASTAPI_URL + "/hydro/devices"
