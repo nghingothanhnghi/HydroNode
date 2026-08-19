@@ -14,6 +14,8 @@ This folder contains the MicroPython source code for the ESP32 controller that m
 - **`device.py` / `device_id.py`**: Device identification and registration with the FastAPI backend.
 - **`actuators.py`**: Registration of local actuators (Pump, Fan, Light) to the backend.
 - **`oled_display.py` / `ssd1306.py`**: Drivers and logic for the local I2C OLED display status.
+- **`auth.py`**: Authentication utilities for the ESP32 device.
+- **`secrets.py`**: Private authentication credentials for the ESP32. Keep this file out of source control. Store the credentials used by the ESP32 to authenticate with the FastAPI backend.
 
 ## System Flow
 
