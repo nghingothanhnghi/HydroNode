@@ -18,20 +18,7 @@ PASSWORD = "71237123"
 # ================================
 # 🌐 BACKEND BASE URL
 # ================================
-FASTAPI_URL = "http://192.168.1.41:8000"
-
-# ================================
-# 👤 AUTH / USER CONTEXT
-# ================================
-# CLIENT_ID = "706cfcdc-5e1c-4bae-b159-f66425c81ecc"
-# USER_ID = 1
-
-# AUTH_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc4MzIzMTk3N30.kKrz17Yv4APknT1Sb5pOu3dzDpUj1glhmQNa6i9Mu7w"
-
-# HEADERS = {
-#     "Authorization": "Bearer " + AUTH_TOKEN,
-#     "Content-Type": "application/json"
-# }
+FASTAPI_URL = "http://192.168.1.66:8000"
 
 # ================================
 # 👤 AUTH / USER CONTEXT
