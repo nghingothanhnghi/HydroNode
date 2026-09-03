@@ -13,7 +13,7 @@ DEVICE_CODE = get_device_code()
 # 📶 WIFI CONFIG
 # ================================
 SSID = "Oanh Nguyen 2.4Ghz"
-PASSWORD = "71237123"
+PASSWORD = "24322432"
 
 # ================================
 # 🌐 BACKEND BASE URL
