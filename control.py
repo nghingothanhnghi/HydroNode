@@ -119,13 +119,21 @@ def check_commands(device_id):
             log(f"🔌 GPIO {key}: {'ON' if state else 'OFF'} (BACKEND)", "green")
 
         # ✅ Derive a single display-friendly mode from per-actuator
-        # backend "mode" fields, for the OLED (separate from
-        # config.AUTO_MODE, which only governs local fallback control).
-        active_modes = {
-            act.get("mode", "manual")
-            for act in actuators
-            if act.get("is_active", True)
-        }
+        # backend state, for the OLED (separate from config.AUTO_MODE,
+        # which only governs local fallback control).
+        #
+        # manual_state is the real override signal: when it's not null,
+        # a human has explicitly forced this actuator regardless of what
+        # "mode" says. "mode" alone can't be trusted since the backend
+        # currently reports "auto" for every actuator even when idle.
+        active_modes = set()
+        for act in actuators:
+            if not act.get("is_active", True):
+                continue
+            if act.get("manual_state") is not None:
+                active_modes.add("manual")
+            else:
+                active_modes.add(act.get("mode", "auto"))
 
         if active_modes == {"auto"}:
             config.BACKEND_MODE["mode"] = "AUTO"
@@ -133,7 +141,7 @@ def check_commands(device_id):
             config.BACKEND_MODE["mode"] = "MAN"
         elif active_modes:
             config.BACKEND_MODE["mode"] = "MIXED"
-        # if active_modes is empty (no actuators), leave the last known value            
+        # if active_modes is empty (no active actuators), leave last known value           
 
     except Exception as e:
         log("❌ Command fetch error", str(e), "red")
