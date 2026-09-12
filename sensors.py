@@ -9,11 +9,30 @@ ec_adc = ADC(Pin(34))
 ec_adc.atten(ADC.ATTN_11DB)   # ~0–3.3V
 ec_adc.width(ADC.WIDTH_12BIT)
 
+# ---------------- RAIN SENSOR ----------------
+# Analog raindrop module (e.g. YL-83 / FC-37 board's "AO" pin).
+# GPIO35 is ADC1-capable and input-only, so it doesn't clash with the
+# DHT11 (GPIO14) or EC sensor (GPIO34). If your sensor is on a different
+# pin, just change this.
+rain_adc = ADC(Pin(35))
+rain_adc.atten(ADC.ATTN_11DB)   # ~0–3.3V
+rain_adc.width(ADC.WIDTH_12BIT)
+
 # ---------------- CONFIG ----------------
 ADC_MAX = 4095
 VREF = 3.3
 EC_CALIBRATION = 2.0
 PPM_FACTOR = 500
+
+# ⚠️ CALIBRATE THESE on your actual board/sensor:
+# - RAIN_ADC_DRY:   raw ADC reading with the sensor plate completely dry
+# - RAIN_ADC_WET:   raw ADC reading with the sensor plate fully soaked
+# - RAIN_DETECT_THRESHOLD: raw ADC value below which we call it "raining"
+# Most raindrop modules read HIGH (near ADC_MAX) when dry and drop as
+# water bridges the traces — i.e. voltage falls as rain increases.
+RAIN_ADC_DRY = 4095
+RAIN_ADC_WET = 1500
+RAIN_DETECT_THRESHOLD = 3000
 
 # Fallback values used ONLY when a real reading isn't available.
 # These exist so the payload always has a usable number for display/
@@ -71,6 +90,39 @@ def ec_to_ppm(ec):
         return 0
     return int(ec * PPM_FACTOR)
 
+# ---------------- RAIN HELPERS ----------------
+def read_rain(samples=10):
+    """
+    Reads the analog rain sensor.
+ 
+    Returns (rain_detected: bool, rain_intensity: float 0-100, valid: bool).
+    rain_intensity is 0 (dry) .. 100 (heaviest rain the sensor can register).
+ 
+    On any read error, fails safe: reports "no rain" AND valid=False, so
+    downstream code (auto_control) knows not to act on the value instead
+    of silently trusting a fabricated "dry" reading.
+    """
+    try:
+        total = 0
+        for _ in range(samples):
+            total += rain_adc.read()
+            time.sleep_ms(10)
+        raw = total / samples
+ 
+        rain_detected = raw < RAIN_DETECT_THRESHOLD
+ 
+        span = RAIN_ADC_DRY - RAIN_ADC_WET
+        intensity = 0.0
+        if span != 0:
+            intensity = (RAIN_ADC_DRY - raw) / span * 100
+        intensity = max(0.0, min(100.0, intensity))
+ 
+        return rain_detected, round(intensity, 1), True
+ 
+    except Exception as e:
+        print("[!] Rain sensor read error:", e)
+        return False, 0.0, False
+
 # ---------------- MAIN SENSOR READ ----------------
 def read_sensor_data():
     # --- 1️⃣ Read DHT ---
@@ -93,6 +145,9 @@ def read_sensor_data():
     ppm = ec_to_ppm(ec)
     ec_valid = True
 
+    # --- 4️⃣ Read Rain ---
+    rain_detected, rain_intensity, rain_valid = read_rain()    
+
     # --- 4️⃣ Final payload (KHÔNG BAO GIỜ None) ---
     # light / moisture / water_level are still hardcoded stubs (TODO:
     # wire real sensors). Flagging them invalid now means auto_control()
@@ -112,7 +167,10 @@ def read_sensor_data():
         "ec_valid": ec_valid,
         "ppm": ppm,
         "water_level": 15.0,  # TODO: replace with real sensor
-        "water_level_valid": False  # TODO: replace with actual sensor validity
+        "water_level_valid": False,  # TODO: replace with actual sensor validity
+        "rain_detected": rain_detected,
+        "rain_intensity": rain_intensity,
+        "rain_valid": rain_valid
     }
 
     # Debug log

@@ -16,6 +16,22 @@ def auto_control(data):
         if gpio and config.ACTUATOR_STATES.get(gpio) == 0:
             config.ACTUATOR_STATES[gpio] = 1 if condition else 0
 
+    # 🌧 RAIN OVERRIDE — highest priority local safety check.
+    # If rain is confirmed (valid reading) and detected, force water-related
+    # actuators OFF regardless of moisture/other conditions, and skip the
+    # rest of auto-control this cycle. This mirrors the backend's
+    # rain_detected_action="close_door" rule as a local fallback in case
+    # connectivity to the backend is lost.
+    if data.get("rain_valid", False) and data.get("rain_detected", False):
+        log("\U0001F327 Rain detected -> forcing pump/water actuators OFF", "yellow")
+        for actuator_type in ("pump", "water_pump", "valve"):
+            gpio = config.TYPE_TO_GPIO.get(actuator_type)
+            if gpio:
+                config.ACTUATOR_STATES[gpio] = 0
+                if gpio in config.PUMP_SPEED:
+                    config.PUMP_SPEED[gpio] = 0
+        return
+
     if data["temperature_valid"] is not None:
         set_state("fan", data["temperature"] > 28)
     else:

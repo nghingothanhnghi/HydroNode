@@ -64,11 +64,24 @@ def update_oled(device_name, sensor_data, auto_mode, actuators):
         )
 
         oled.text(relay_line, 0, 48)
+
+        # ================= WIFI / RAIN STATUS =================
+        # Rain is a safety-relevant alert, so it takes priority over the
+        # WiFi status line when it's actively raining (valid reading only —
+        # a failed/uncalibrated sensor should never claim "RAIN").
+        rain_valid = sensor_data.get("rain_valid", True)
+        rain_detected = sensor_data.get("rain_detected", False)
         
         # ================= WIFI STATUS (NEW) =================
-        wifi_status = sensor_data.get("_wifi", "")
-        if wifi_status:
-            oled.text(wifi_status[:12], 0, 56)
+        if rain_valid and rain_detected:
+            oled.text(
+                "RAIN {}%".format(int(sensor_data.get("rain_intensity", 0))),
+                0, 56,
+            )
+        else:
+            wifi_status = sensor_data.get("_wifi", "")
+            if wifi_status:
+                oled.text(wifi_status[:12], 0, 56)
         
         oled.show()
 
