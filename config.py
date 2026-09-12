@@ -81,6 +81,16 @@ AUTO_MODE = {"enabled": False}   # mutable dictionary
 # 👉 If False → controlled by backend
 
 # ================================
+# 🖥 BACKEND-REPORTED MODE (for OLED display only)
+# ================================
+BACKEND_MODE = {"mode": "MAN"}
+# 👉 Updated every cycle in control.py::check_commands() from the
+#    per-actuator "mode" field in /hydro/status.
+# 👉 "AUTO"  → all active actuators are backend-automated
+# 👉 "MAN"   → all active actuators are manually controlled
+# 👉 "MIXED" → some actuators auto, some manual
+
+# ================================
 # ⚡ GPIO MAPPING (CRITICAL)
 # ================================
 # Map actuator type → GPIO PIN (STRING)

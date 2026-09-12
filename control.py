@@ -118,6 +118,23 @@ def check_commands(device_id):
             
             log(f"🔌 GPIO {key}: {'ON' if state else 'OFF'} (BACKEND)", "green")
 
+        # ✅ Derive a single display-friendly mode from per-actuator
+        # backend "mode" fields, for the OLED (separate from
+        # config.AUTO_MODE, which only governs local fallback control).
+        active_modes = {
+            act.get("mode", "manual")
+            for act in actuators
+            if act.get("is_active", True)
+        }
+
+        if active_modes == {"auto"}:
+            config.BACKEND_MODE["mode"] = "AUTO"
+        elif active_modes == {"manual"}:
+            config.BACKEND_MODE["mode"] = "MAN"
+        elif active_modes:
+            config.BACKEND_MODE["mode"] = "MIXED"
+        # if active_modes is empty (no actuators), leave the last known value            
+
     except Exception as e:
         log("❌ Command fetch error", str(e), "red")
         

@@ -119,7 +119,8 @@ def main():
             update_oled(
                 device_name,
                 sensor_data,
-                config.AUTO_MODE,
+                # config.AUTO_MODE,
+                config.BACKEND_MODE,
                 config.ACTUATOR_STATES,
             )
             last_oled = now

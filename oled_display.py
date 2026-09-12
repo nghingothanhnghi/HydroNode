@@ -15,7 +15,7 @@ def init_oled():
         i2c = I2C(0, scl=Pin(22), sda=Pin(21))
         oled = ssd1306.SSD1306_I2C(128, 64, i2c)
 
-def update_oled(device_name, sensor_data, auto_mode, actuators):
+def update_oled(device_name, sensor_data, auto_mode, backend_mode, actuators):
     """
     Update OLED display.
     Safe to call repeatedly.
@@ -47,11 +47,12 @@ def update_oled(device_name, sensor_data, auto_mode, actuators):
 
         # Row 3 – Water level + Mode
         oled.text("W:{}".format(sensor_data.get("water_level", "--")), 0, 36)
-        oled.text(
-            "Mode:{}".format("AUTO" if auto_mode["enabled"] else "MAN"),
-            64,
-            36,
-        )
+        # oled.text(
+        #     "Mode:{}".format("AUTO" if auto_mode["enabled"] else "MAN"),
+        #     64,
+        #     36,
+        # )
+        oled.text("Mode:{}".format(backend_mode.get("mode", "MAN")), 64, 36)
 
         def icon(name):
             return "↑" if actuators.get(name) else "-"
