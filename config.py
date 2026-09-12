@@ -91,7 +91,7 @@ FLOW_URL = FASTAPI_URL + "/hydro/flow-readings"
 FLOW_SENSOR_ENABLED = True
 
 FLOW_SENSOR_PINS = {
-    "water_pump": "34",
+    "water_pump": "4",
     # "pump": "35",   # add a second one the same way if this board has 2 pumps
 }
 

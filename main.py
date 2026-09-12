@@ -8,6 +8,7 @@ from sensors import read_sensor_data
 from oled_display import update_oled
 from relay import update_relays, test_single_gpio
 from control import auto_control, check_commands
+import flow_sensor
 import auth
 import config
 
@@ -51,6 +52,9 @@ def main():
     # 2️⃣ Register actuators in backend
     register_actuators(device_id)
     wdt.feed()
+
+    flow_sensor.init()   # <-- arm the pulse-counting IRQ
+    wdt.feed()    
 
     last_send = 0
     last_oled = 0 
@@ -113,6 +117,31 @@ def main():
             wdt.feed()
             check_commands(device_id)
             wdt.feed()
+
+            # --- Flow sensor readings ---
+            flow_data = flow_sensor.read_all()
+            for actuator_type, rate in flow_data.items():
+                flow_payload = {
+                    "device_id": config.DEVICE_CODE,
+                    "client_id": config.CLIENT_ID,
+                    "actuator_type": actuator_type,
+                    "flow_rate": rate,
+                }
+                res = None
+                try:
+                    res = http_request(
+                        requests.post,
+                        config.FLOW_URL,
+                        json=flow_payload,
+                        headers=config.HEADERS
+                    )
+                    print("[→] Flow data sent:", res.status_code, flow_payload)
+                except Exception as e:
+                    print("[!] Flow send error:", e)
+                finally:
+                    if res:
+                        res.close()
+            wdt.feed()            
 
         # 6️⃣ Update display and relays
         if now - last_oled >= 1:
