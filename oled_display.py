@@ -1,6 +1,7 @@
 from machine import Pin, I2C
 import ssd1306
 import time
+import config
 
 oled = None
 
@@ -14,6 +15,7 @@ def init_oled():
         time.sleep(1)  # let ESP32 + OLED power stabilize
         i2c = I2C(0, scl=Pin(22), sda=Pin(21))
         oled = ssd1306.SSD1306_I2C(128, 64, i2c)
+        
 
 def update_oled(device_name, sensor_data, auto_mode, backend_mode, actuators):
     """
@@ -54,8 +56,18 @@ def update_oled(device_name, sensor_data, auto_mode, backend_mode, actuators):
         # )
         oled.text("Mode:{}".format(backend_mode.get("mode", "MAN")), 64, 36)
 
-        def icon(name):
-            return "↑" if actuators.get(name) else "-"
+        # ✅ FIX: `actuators` (config.ACTUATOR_STATES) is keyed by GPIO
+        # string ("25", "23", ...), not by actuator type ("pump", "fan",
+        # ...). The old icon(name) did actuators.get(name), which was
+        # always a miss — this line always showed "-" regardless of the
+        # real relay state. Resolve type -> GPIO first, then look up
+        # both ON/OFF state and the automation reason on that GPIO.
+        def icon(actuator_type):
+            gpio = config.TYPE_TO_GPIO.get(actuator_type)
+            if not gpio or not actuators.get(gpio):
+                return "-"
+            reason = config.ACTUATOR_REASON.get(gpio, "")
+            return "S" if reason == "schedule" else "↑"
 
         relay_line = "P{} F{} L{} W{}".format(
             icon("pump"),

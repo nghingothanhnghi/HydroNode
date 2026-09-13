@@ -158,6 +158,14 @@ ACTUATOR_STATES = {
     "18": 0,
 }
 
+ACTUATOR_REASON = {
+    "25": "",
+    "23": "",
+    "27": "",
+    "16": "",
+    "18": "",
+}
+
 # Backend logic:
 # 1 = actuator ON
 # 0 = actuator OFF

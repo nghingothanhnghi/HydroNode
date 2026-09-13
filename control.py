@@ -86,7 +86,7 @@ def check_commands(device_id):
             pin = act.get("pin")
             name = act.get("type")
             current_state = act.get("current_state", False)
-            manual = act.get("manual")
+            reason = act.get("automation_reason", "")   # "schedule", "manual_override", "off", etc.
 
             # ✅ Ưu tiên pin
             if pin is not None:
@@ -107,6 +107,7 @@ def check_commands(device_id):
             # ✅ Update ON/OFF
             state = 1 if current_state else 0
             config.ACTUATOR_STATES[key] = state
+            config.ACTUATOR_REASON[key] = reason
         
 
             # 🔥 handle PWM speed
@@ -116,7 +117,8 @@ def check_commands(device_id):
                 elif state == 0:
                     config.PUMP_SPEED[key] = 0  # force OFF
             
-            log(f"🔌 GPIO {key}: {'ON' if state else 'OFF'} (BACKEND)", "green")
+            log(f"🔌 GPIO {key}: {'ON' if state else 'OFF'} "
+                f"({reason.upper() if reason else 'BACKEND'})", "green")
 
         # ✅ Derive a single display-friendly mode from per-actuator
         # backend state, for the OLED (separate from config.AUTO_MODE,
