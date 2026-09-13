@@ -121,11 +121,16 @@ def main():
             # --- Flow sensor readings ---
             flow_data = flow_sensor.read_all()
             for actuator_type, rate in flow_data.items():
+                actuator_id = config.ACTUATOR_IDS.get(actuator_type)
+                if actuator_id is None:
+                    print(f"[!] No actuator_id known for '{actuator_type}', skipping flow post")
+                    continue
+
                 flow_payload = {
-                    "device_id": config.DEVICE_CODE,
-                    "client_id": config.CLIENT_ID,
-                    "actuator_type": actuator_type,
+                    "actuator_id": actuator_id,
+                    "device_id": device_id,      # numeric id from get_or_register_device(), NOT config.DEVICE_CODE
                     "flow_rate": rate,
+                    # session_id intentionally omitted — nullable, no active irrigation session tracked yet
                 }
                 res = None
                 try:
@@ -136,6 +141,8 @@ def main():
                         headers=config.HEADERS
                     )
                     print("[→] Flow data sent:", res.status_code, flow_payload)
+                    if res.status_code == 401:
+                        auth.login()
                 except Exception as e:
                     print("[!] Flow send error:", e)
                 finally:

@@ -148,6 +148,7 @@ PUMP_SPEED = {
 # 🔌 RUNTIME STATE STORAGE
 # ================================
 # This is what actually drives relays
+ACTUATOR_IDS = {}   # actuator type -> backend numeric id, filled by actuators.register_actuators()
 
 ACTUATOR_STATES = {
     "25": 0,
@@ -164,6 +165,7 @@ ACTUATOR_STATES = {
 # Relay hardware is ACTIVE LOW:
 # GPIO LOW  -> relay ON
 # GPIO HIGH -> relay OFF
+
 
 
 # ================================
