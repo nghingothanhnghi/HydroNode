@@ -67,6 +67,7 @@ def main():
         # 3️⃣ Safer WiFi reconnect with OLED status
         if not wlan.isconnected():
             wifi_status = "WiFi: LOST"
+            wifi_rssi = None
             if now - last_wifi_check > 5:
                 print("[WiFi] Disconnected, reconnecting...")
                 last_wifi_check = now
@@ -74,9 +75,14 @@ def main():
                 wdt.feed()
         else:
             wifi_status = "WiFi: OK"
+            try:
+                wifi_rssi = wlan.status('rssi')
+            except:
+                wifi_rssi = None
             
         sensor_data = read_sensor_data()
         sensor_data["_wifi"] = wifi_status
+        sensor_data["_wifi_rssi"] = wifi_rssi
         
         # 4️⃣ Automatic control
 #         if config.AUTO_MODE["enabled"]:

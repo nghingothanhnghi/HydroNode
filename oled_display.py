@@ -16,6 +16,31 @@ def init_oled():
         i2c = I2C(0, scl=Pin(22), sda=Pin(21))
         oled = ssd1306.SSD1306_I2C(128, 64, i2c)
         
+def _wifi_level(rssi):
+    """Map RSSI (dBm) to a 0-4 bar level, like a phone signal icon."""
+    if rssi is None:
+        return 0
+    if rssi >= -55:
+        return 4
+    elif rssi >= -65:
+        return 3
+    elif rssi >= -75:
+        return 2
+    elif rssi >= -85:
+        return 1
+    return 0
+
+
+def _draw_wifi_bars(oled, x, y, level, connected):
+    bar_w, gap, max_h, n = 2, 1, 8, 4
+    for i in range(n):
+        h = (i + 1) * max_h // n           # 2, 4, 6, 8 px tall
+        bx = x + i * (bar_w + gap)
+        by = y + (max_h - h)
+        if connected and i < level:
+            oled.framebuf.fill_rect(bx, by, bar_w, h, 1)   # filled = active
+        else:
+            oled.framebuf.rect(bx, by, bar_w, h, 1)        # outline = inactive
 
 def update_oled(device_name, sensor_data, auto_mode, backend_mode, actuators):
     """
@@ -84,6 +109,9 @@ def update_oled(device_name, sensor_data, auto_mode, backend_mode, actuators):
         # a failed/uncalibrated sensor should never claim "RAIN").
         rain_valid = sensor_data.get("rain_valid", True)
         rain_detected = sensor_data.get("rain_detected", False)
+        rssi = sensor_data.get("_wifi_rssi")
+        connected = sensor_data.get("_wifi", "").endswith("OK")
+        level = _wifi_level(rssi)
         
         # ================= WIFI STATUS (NEW) =================
         if rain_valid and rain_detected:
@@ -92,9 +120,11 @@ def update_oled(device_name, sensor_data, auto_mode, backend_mode, actuators):
                 0, 56,
             )
         else:
-            wifi_status = sensor_data.get("_wifi", "")
-            if wifi_status:
-                oled.text(wifi_status[:12], 0, 56)
+            _draw_wifi_bars(oled, 0, 56, level, connected)
+            if rssi is not None:
+                oled.text("{}dBm".format(rssi), 18, 56)
+            elif not connected:
+                oled.text("NO WIFI", 18, 56)
         
         oled.show()
 
