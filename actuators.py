@@ -141,4 +141,4 @@ def register_actuators(device_id):
         if res:
             res.close()
 
-    print("[✓] Actuator ID map:", config.ACTUATOR_IDS)    
+    print("[✓] Actuator ID map:", config.ACTUATOR_IDS)   

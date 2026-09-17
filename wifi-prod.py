@@ -1,5 +1,6 @@
 # wifi.py
-import network, time
+import network
+import time
 import config
 import ubinascii
 import socket
@@ -8,88 +9,167 @@ import socket
 # WIFI SCAN
 # ==================================================
 def scan_wifi():
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
 
-    print("\n========================================")
-    print("📡 WIFI SCAN")
-    print("========================================")
+    wlan = network.WLAN(network.STA_IF)
 
     try:
+        wlan.active(False)
+        time.sleep(1)
+
+        wlan.active(True)
+        time.sleep(2)
+
+        print("\n========================================")
+        print("📡 WIFI SCAN")
+        print("========================================")
+        print("WiFi Active:", wlan.active())
 
         aps = wlan.scan()
 
+        print("AP COUNT:", len(aps))
+
         for ap in aps:
 
-            ssid = ap[0].decode()
-            bssid = ":".join(
-                "{:02X}".format(x)
-                for x in ap[1]
-            )
+            try:
+                ssid = ap[0].decode()
 
-            channel = ap[2]
-            rssi = ap[3]
+                bssid = ":".join(
+                    "{:02X}".format(x)
+                    for x in ap[1]
+                )
 
-            print(
-                "SSID:", ssid,
-                "| CH:", channel,
-                "| RSSI:", rssi,
-                "| BSSID:", bssid
-            )
+                channel = ap[2]
+                rssi = ap[3]
+
+                print(
+                    "SSID:", ssid,
+                    "| CH:", channel,
+                    "| RSSI:", rssi,
+                    "| BSSID:", bssid
+                )
+
+            except Exception as e:
+                print("AP Parse Error:", e)
 
     except Exception as e:
-        print("Scan error:", e)
+        print("❌ Scan Error:", repr(e))
 
     print("========================================\n")
+
 
 # ==================================================
 # WIFI CONNECT
 # ==================================================
 def connect_wifi():
-    
-    # Scan nearby APs first
+
     scan_wifi()
-    
+
     wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    
+
+    try:
+        wlan.active(False)
+        time.sleep(1)
+
+        wlan.active(True)
+        time.sleep(2)
+
+        try:
+            wlan.disconnect()
+        except:
+            pass
+
+        time.sleep(1)
+
+    except Exception as e:
+        print("WiFi Init Error:", repr(e))
+
     print("\n========================================")
     print("📶 WIFI CONNECTION")
     print("========================================")
     print("SSID:", config.SSID)
     print("Backend:", config.FASTAPI_URL)
-    
-    start_time = time.time()
-    
-    if not wlan.isconnected():
-        
-        print("[WiFi] Connecting...")
-        wlan.connect(config.SSID, config.PASSWORD)
-        
-        retry = 0
-        
-        while not wlan.isconnected():
-            
-            retry += 1
-            print("[WiFi] Attempt", retry)
-            
-            time.sleep(1)
-            
-            if retry > 20:
-           
-                print("[WiFi] Timeout → reconnecting")
 
-                wlan.disconnect()
+    start_time = time.time()
+
+    if not wlan.isconnected():
+
+        print("[WiFi] Connecting...")
+
+        try:
+
+            wlan.connect(
+                config.SSID,
+                config.PASSWORD
+            )
+
+        except Exception as e:
+
+            print("❌ connect() failed:", repr(e))
+            raise
+
+        retry = 0
+
+        while not wlan.isconnected():
+
+            retry += 1
+
+            try:
+                status = wlan.status()
+            except:
+                status = "UNKNOWN"       
+            
+            status_map = {
+                1000: "IDLE",
+                1001: "CONNECTING",
+                1010: "GOT_IP",
+                202: "AUTH_FAIL",
+                201: "NO_AP_FOUND",
+            }
+
+            print(
+                "[WiFi] Attempt",
+                retry,
+                "| Status:",
+                status_map.get(status, status)
+            )
+
+            time.sleep(1)
+
+            if retry > 20:
+
+                print(
+                    "[WiFi] Timeout",
+                    "| Status:",
+                    status
+                )
+
+                try:
+                    wlan.disconnect()
+                except:
+                    pass
+
                 time.sleep(2)
 
-                wlan.connect(
-                    config.SSID,
-                    config.PASSWORD,
-                )
-                
+                try:
+
+                    wlan.connect(
+                        config.SSID,
+                        config.PASSWORD
+                    )
+
+                except Exception as e:
+
+                    print(
+                        "Reconnect Error:",
+                        repr(e)
+                    )
+
                 retry = 0
-    
-    connect_time = round(time.time() - start_time, 1)
+
+    connect_time = round(
+        time.time() - start_time,
+        1
+    )
 
     ip, subnet, gateway, dns = wlan.ifconfig()
 
@@ -102,16 +182,19 @@ def connect_wifi():
     print("DNS      :", dns)
 
     try:
+
         mac = ":".join(
             "{:02X}".format(x)
             for x in wlan.config("mac")
         )
+
         print("MAC      :", mac)
+
     except:
         pass
 
-    # ADD THIS BLOCK
     try:
+
         bssid = ubinascii.hexlify(
             wlan.config("bssid"),
             ":"
@@ -120,16 +203,22 @@ def connect_wifi():
         print("AP BSSID :", bssid)
 
     except Exception as e:
-        print("BSSID error:", e)
+
+        print("BSSID Error:", e)
 
     try:
-        print("RSSI     :", wlan.status("rssi"), "dBm")
+
+        print(
+            "RSSI     :",
+            wlan.status("rssi"),
+            "dBm"
+        )
+
     except:
         pass
 
     print("Time     :", connect_time, "sec")
 
-    # Check backend subnet
     backend_ip = (
         config.FASTAPI_URL
         .replace("http://", "")
@@ -139,13 +228,17 @@ def connect_wifi():
     print("----------------------------------------")
     print("Backend IP:", backend_ip)
 
-    if ip.startswith("192.168.1.") and backend_ip.startswith("192.168.1."):
+    if (
+        ip.startswith("192.168.1.")
+        and
+        backend_ip.startswith("192.168.1.")
+    ):
         print("✅ Same subnet")
     else:
         print("❌ Different subnet")
 
     print("========================================\n")
-    
+
     return wlan
 
 # ==================================================
