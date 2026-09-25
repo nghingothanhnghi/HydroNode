@@ -1,3 +1,4 @@
+# oled_display.py
 from machine import Pin, I2C
 import ssd1306
 import time
@@ -42,7 +43,7 @@ def _draw_wifi_bars(oled, x, y, level, connected):
         else:
             oled.framebuf.rect(bx, by, bar_w, h, 1)        # outline = inactive
 
-def update_oled(device_name, sensor_data, auto_mode, backend_mode, actuators):
+def update_oled(device_name, sensor_data, backend_mode, actuators):
     """
     Update OLED display.
     Safe to call repeatedly.
@@ -87,12 +88,13 @@ def update_oled(device_name, sensor_data, auto_mode, backend_mode, actuators):
         # always a miss — this line always showed "-" regardless of the
         # real relay state. Resolve type -> GPIO first, then look up
         # both ON/OFF state and the automation reason on that GPIO.
+        
         def icon(actuator_type):
             gpio = config.TYPE_TO_GPIO.get(actuator_type)
             if not gpio or not actuators.get(gpio):
                 return "-"
             reason = config.ACTUATOR_REASON.get(gpio, "")
-            return "S" if reason == "schedule" else "↑"
+            return "S" if reason == "schedule" else "^"   # was "↑"        
 
         relay_line = "P{} F{} L{} W{}".format(
             icon("pump"),
