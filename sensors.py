@@ -1,3 +1,4 @@
+# sensors.py
 import time, dht
 from machine import Pin, ADC
 
@@ -14,9 +15,18 @@ ec_adc.width(ADC.WIDTH_12BIT)
 # GPIO35 is ADC1-capable and input-only, so it doesn't clash with the
 # DHT11 (GPIO14) or EC sensor (GPIO34). If your sensor is on a different
 # pin, just change this.
-rain_adc = ADC(Pin(35))
-rain_adc.atten(ADC.ATTN_11DB)   # ~0–3.3V
-rain_adc.width(ADC.WIDTH_12BIT)
+#
+# ⚠️ No rain sensor is physically wired on this board yet. Reading a
+# floating ADC pin and trusting it is exactly what caused rain_detected
+# to read stuck True — a floating input reads noise, and that noise
+# happened to land below RAIN_DETECT_THRESHOLD. Flip this to True once a
+# real sensor is wired to GPIO35 and calibrated.
+RAIN_SENSOR_ENABLED = False
+
+rain_adc = ADC(Pin(35)) if RAIN_SENSOR_ENABLED else None
+if RAIN_SENSOR_ENABLED:
+    rain_adc.atten(ADC.ATTN_11DB)   # ~0–3.3V
+    rain_adc.width(ADC.WIDTH_12BIT)
 
 # ---------------- CONFIG ----------------
 ADC_MAX = 4095
@@ -94,14 +104,17 @@ def ec_to_ppm(ec):
 def read_rain(samples=10):
     """
     Reads the analog rain sensor.
- 
+
     Returns (rain_detected: bool, rain_intensity: float 0-100, valid: bool).
-    rain_intensity is 0 (dry) .. 100 (heaviest rain the sensor can register).
- 
-    On any read error, fails safe: reports "no rain" AND valid=False, so
-    downstream code (auto_control) knows not to act on the value instead
-    of silently trusting a fabricated "dry" reading.
+
+    Returns (False, 0.0, False) immediately, without touching the ADC pin,
+    when RAIN_SENSOR_ENABLED is False (no sensor physically wired) — this
+    is exactly what previously caused a phantom "always raining" reading
+    from a floating input.
     """
+    if not RAIN_SENSOR_ENABLED:
+        return False, 0.0, False
+    
     try:
         total = 0
         for _ in range(samples):
