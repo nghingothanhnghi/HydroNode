@@ -7,7 +7,7 @@ from actuators import register_actuators
 from sensors import read_sensor_data
 from oled_display import update_oled
 from relay import update_relays, test_single_gpio
-from control import auto_control, check_commands
+from control import auto_control, check_commands, report_pending_states
 import flow_sensor
 import auth
 import config
@@ -168,7 +168,9 @@ def main():
             last_oled = now
         
         # 7️⃣ Apply relay states to GPIO
-        update_relays()   # <-- after check_commands()    
+        for report in update_relays():
+            config.PENDING_STATE_REPORTS[report["gpio"]] = report
+        report_pending_states(device_id)
 
         time.sleep(0.2)
         # run relays at lower frequency

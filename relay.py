@@ -94,6 +94,8 @@ def _enforce_max_on_time():
 
 def update_relays():
 
+    applied = []
+
     _enforce_max_on_time()
 
     # ==================================================
@@ -114,8 +116,17 @@ def update_relays():
 
             # ACTIVE LOW relay logic
             gpio_value = RELAY_ON if state else RELAY_OFF
-            # Write GPIO
-            pin.value(gpio_value)
+            # Write GPIO.  The acknowledgement is created only after this
+            # succeeds; a write exception is reported as a failed apply.
+            try:
+                pin.value(gpio_value)
+            except Exception as e:
+                applied.append({
+                    "gpio": key, "actuator": actuator, "reported_state": False,
+                    "error": "GPIO write failed: {}".format(e),
+                })
+                print("❌ {} GPIO write failed: {}".format(actuator.upper(), e))
+                continue
             relay_active = gpio_value == RELAY_ON
 
             # ---------------- HUMAN READABLE STATUS ----------------
@@ -163,6 +174,11 @@ def update_relays():
             else:
                 _on_since.pop(key, None)            
 
+            applied.append({
+                "gpio": key, "actuator": actuator, "reported_state": bool(state),
+                "error": None,
+            })
+
     # ==================================================
     # PWM / MOSFET DEVICES
     # ==================================================
@@ -191,7 +207,15 @@ def update_relays():
 
         # Only update on change
         if prev != duty:
-            pwm.duty(duty)
+            try:
+                pwm.duty(duty)
+            except Exception as e:
+                applied.append({
+                    "gpio": key, "actuator": actuator, "reported_state": False,
+                    "error": "PWM write failed: {}".format(e),
+                })
+                print("❌ {} PWM write failed: {}".format(actuator.upper(), e))
+                continue
             print(
                 f"💧 {actuator.upper()} "
                 f"(GPIO {key}) | "
@@ -205,6 +229,13 @@ def update_relays():
                 _on_since.setdefault(key, time.time())
             else:
                 _on_since.pop(key, None)
+
+            applied.append({
+                "gpio": key, "actuator": actuator, "reported_state": duty > 0,
+                "error": None,
+            })
+
+    return applied
 
 # ---------------- TEST GPIO ----------------
 

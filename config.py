@@ -78,6 +78,9 @@ ACTUATOR_BULK_URL = ACTUATOR_URL + "/bulk"
 # System status (IMPORTANT)
 STATUS_URL = FASTAPI_URL + "/hydro/status"
 # ↔ GET → ESP32 fetch commands from backend
+REPORTED_STATE_URL = FASTAPI_URL + "/hydro/actuator"
+# ↔ POST → ESP32 acknowledges GPIO/PWM application at
+#    /hydro/actuator/{actuator_id}/reported-state
 
 FLOW_URL = FASTAPI_URL + "/hydro/flow-readings"
 
@@ -149,6 +152,10 @@ PUMP_SPEED = {
 # ================================
 # This is what actually drives relays
 ACTUATOR_IDS = {}   # actuator type -> backend numeric id, filled by actuators.register_actuators()
+# GPIO -> latest result waiting for an authenticated acknowledgement.  A dict
+# coalesces rapid state changes so an offline controller reports its latest
+# applied state after it reconnects.
+PENDING_STATE_REPORTS = {}
 
 ACTUATOR_STATES = {
     "25": 0,

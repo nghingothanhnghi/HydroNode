@@ -4,6 +4,41 @@ import config
 from helper import log, http_request
 from device import shutdown_device, activate_device as activate_device_hardware
 
+
+def report_pending_states(device_id):
+    """Deliver GPIO/PWM apply acknowledgements, retaining failures to retry."""
+    for gpio, report in list(config.PENDING_STATE_REPORTS.items()):
+        actuator_id = config.ACTUATOR_IDS.get(report["actuator"])
+        if actuator_id is None:
+            log("⚠ Cannot report state; actuator is not registered", report, "yellow")
+            continue
+
+        res = None
+        try:
+            res = http_request(
+                requests.post,
+                "{}/{}/reported-state".format(config.REPORTED_STATE_URL, actuator_id),
+                json={
+                    "device_id": device_id,
+                    "reported_state": report["reported_state"],
+                    "error": report["error"],
+                },
+                headers=config.HEADERS,
+            )
+            if res.status_code in (200, 201):
+                config.PENDING_STATE_REPORTS.pop(gpio, None)
+                continue
+            if res.status_code == 401:
+                import auth
+                if auth.login():
+                    continue
+            log("⚠ State acknowledgement rejected", res.status_code, "yellow")
+        except Exception as e:
+            log("⚠ State acknowledgement failed", str(e), "yellow")
+        finally:
+            if res:
+                res.close()
+
 def auto_control(data):
     """
     Local auto-control. Only acts on a reading if its matching "_valid"
@@ -63,6 +98,11 @@ def check_commands(device_id):
         )
 
         if res.status_code != 200:
+            if res.status_code == 401:
+                # The status poll has its own authentication failure path.
+                # Refresh now; the next poll uses the new Bearer token.
+                import auth
+                auth.login()
             return
 
         payload = res.json()
