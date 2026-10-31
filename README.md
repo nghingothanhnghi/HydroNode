@@ -6,17 +6,17 @@ This folder contains the MicroPython source code for the ESP32 controller that m
 
 ## Folder Structure
 
-- **`main.py`**: Entry point of the application. Handles the main loop, network stability, and coordination between modules.
+- **`main.py`**: Entry point of the application. Handles the main loop, network stability, and coordination between modules. Collects the acknowledgements returned by `relay.update_relays()` into `config.PENDING_STATE_REPORTS` and calls `control.report_pending_states()` every loop.
 - **`config.py`**: Centralized configuration (WiFi credentials, backend URLs, GPIO mapping, and global runtime state).
 - **`secrets.py`** *(gitignored, not included)*: Auth credentials (`AUTH_USERNAME`, `AUTH_PASSWORD`) imported by `config.py`.
 - **`auth.py`**: Logs in to the backend at boot (and on 401) to obtain a fresh JWT, so the firmware never relies on a static token that can expire or be invalidated by a DB wipe.
 - **`sensors.py`**: Logic for reading sensors — DHT11 (temp/humidity), analog EC/PPM, and the analog rain sensor.
 - **`flow_sensor.py`**: Pulse-counting flow rate support (YF-S201/YF-B1 style) for water actuators, keyed off `config.FLOW_SENSOR_PINS`. Uses GPIO interrupts, so sensors must be wired to a native ESP32 pin (not an MCP23017 expander pin).
-- **`relay.py`**: Hardware abstraction for relays and the PWM/mosfet-driven water pump (active-low relay logic). Manages GPIO pins and the `MAX_ON_TIME` safety timeout.
-- **`control.py`**: Logic for fetching commands from the backend and local auto-control (if `AUTO_MODE` is enabled), including a local rain-safety override. Also derives the backend-reported display mode (`config.BACKEND_MODE`) shown on the OLED.
+- **`relay.py`**: Hardware abstraction for relays and the PWM/mosfet-driven water pump (active-low relay logic). Manages GPIO pins and the `MAX_ON_TIME` safety timeout. `update_relays()` returns a list of apply results (one per actuator whose hardware state just changed, or whose write failed) used for reported-state acknowledgements.
+- **`control.py`**: Logic for fetching commands from the backend, local auto-control (if `AUTO_MODE` is enabled, including a local rain-safety override), and delivering reported-state acknowledgements (`report_pending_states()`). Also derives the backend-reported display mode (`config.BACKEND_MODE`) shown on the OLED.
 - **`wifi.py`**: Manages WiFi connection, reconnection, and connectivity diagnostics (gateway/backend reachability tests).
 - **`device.py` / `device_id.py`**: Device identification (derived from the ESP32's MAC address) and registration with the FastAPI backend.
-- **`actuators.py`**: Registration of local actuators (Pump, Fan, Light, Water Pump, Valve) with the backend, and population of `config.ACTUATOR_IDS` (type → backend numeric id) needed to tag outgoing flow readings.
+- **`actuators.py`**: Registration of local actuators (Pump, Fan, Light, Water Pump, Valve) with the backend, and population of `config.ACTUATOR_IDS` (type → backend numeric id) needed to tag outgoing flow readings and reported-state acknowledgements.
 - **`oled_display.py` / `ssd1306.py`**: Driver and logic for the local I2C OLED status display.
 - **`helper.py`**: Shared logging (`log`, `pretty`) and an HTTP request wrapper that enforces a socket timeout.
 
@@ -35,8 +35,10 @@ flowchart TD
         Send --> Fetch["GET /hydro/status (control.py)"]
         Fetch --> UpdateState["Update Local ACTUATOR_STATES + BACKEND_MODE"]
         UpdateState --> FlowRead["Read & POST Flow Rates (flow_sensor.py -> /hydro/flow-readings)"]
-        FlowRead --> Apply["Apply GPIO States (relay.py)"]
-        Apply --> Display["Update OLED (oled_display.py)"]
+        FlowRead --> Display["Update OLED (oled_display.py)"]
+        Display --> Apply["Apply GPIO/PWM States (relay.update_relays)"]
+        Apply --> Queue["Queue apply results in PENDING_STATE_REPORTS"]
+        Queue --> Report["POST /hydro/actuator/{id}/reported-state (control.report_pending_states)"]
     end
 
     FlowInit --> Loop
@@ -54,10 +56,42 @@ flowchart TD
    - If it's a mix of both → `BACKEND_MODE["mode"] = "MIXED"` (e.g. Water Pump manually forced on while Pump/Fan/Light/Valve remain on backend auto-control).
    - If the actuator list comes back empty (e.g. a transient fetch issue), the last known mode is left unchanged rather than defaulting to `MAN`.
    - This is distinct from `config.AUTO_MODE["enabled"]`, which only governs the ESP32's **local** fallback control logic (`control.py::auto_control()`, currently disabled in `main.py`) and is unrelated to what the backend displays.
-5. **Safety**:
+5. **Reported-State Acknowledgement** (`control.py::report_pending_states()`): once the hardware has actually been driven, the ESP32 tells the backend what it applied (see [Reported-State Acknowledgements](#reported-state-acknowledgements-controlreport_pending_states) below).
+6. **Safety**:
    - `relay.py` includes a `MAX_ON_TIME` safety feature to prevent actuators (like the pump) from running indefinitely if a "turn off" command is missed.
    - `control.py`'s local `auto_control()` forces the pump, water pump, and valve OFF whenever a valid rain reading is detected — a local fallback for the backend's `rain_detected_action` rule in case connectivity is lost.
    - Auth tokens are minted fresh at boot (`auth.py`) rather than baked into the firmware, so a backend DB wipe or 30-day token expiry doesn't require a reflash — only recreating the same username/password on the backend.
+
+## Reported-State Acknowledgements (`control.report_pending_states`)
+
+The backend decides the *desired* state (via `/hydro/status`); the ESP32 confirms the *actual* state it applied to the GPIO/PWM pin. This closes the loop so the backend can tell the difference between "commanded ON" and "hardware really switched ON" (or failed to).
+
+**Flow, every main-loop iteration (~0.2s):**
+
+1. `relay.update_relays()` compares each actuator's desired state with the last applied state. Only on a **change** does it write the pin and append a result dict to the list it returns:
+
+   ```python
+   {"gpio": "25", "actuator": "pump", "reported_state": True, "error": None}
+   ```
+
+   - Relays: `reported_state` is the logical ON/OFF state that was written (active-low is already accounted for).
+   - PWM/mosfet (water pump): `reported_state` is `duty > 0`.
+   - If the pin write raises, the result carries `reported_state: False` and `error: "GPIO write failed: ..."` (or `"PWM write failed: ..."`) instead.
+2. `main.py` stores each result in `config.PENDING_STATE_REPORTS[gpio]`. It is a **dict keyed by GPIO**, so rapid state changes while offline coalesce — only the *latest* applied state per GPIO is reported once the controller reconnects.
+3. `control.report_pending_states(device_id)` then walks every pending entry:
+   - Looks up the actuator's backend id via `config.ACTUATOR_IDS[report["actuator"]]`. If none is known yet (registration hasn't completed), it logs a warning and keeps the entry pending.
+   - `POST {config.REPORTED_STATE_URL}/{actuator_id}/reported-state` (i.e. `/hydro/actuator/{actuator_id}/reported-state`) with:
+
+     ```json
+     {"device_id": <numeric device id>, "reported_state": true, "error": null}
+     ```
+   - **200/201** → the entry is removed from `PENDING_STATE_REPORTS`.
+   - **401** → calls `auth.login()` to refresh the JWT; the entry stays pending and is retried on the next loop with the new token.
+   - **Any other status or exception** → logged as a warning; the entry stays pending and is retried on the next loop.
+
+Because failures are retained, acknowledgements are delivered at-least-once and the backend always ends up with the controller's latest applied state.
+
+> `device_id` here is the numeric id returned by `get_or_register_device()`, not `config.DEVICE_CODE` (the MAC-based string).
 
 ## Flow Sensors (`flow_sensor.py`)
 
@@ -84,7 +118,7 @@ A runtime dict, `{actuator_type: backend_numeric_id}` (e.g. `{"water_pump": 4}`)
 2. Any actuator type not yet on the backend is bulk-registered via `POST /actuators/bulk`; the created objects returned by that call (each with `id` and `type`) are used to fill in the remaining `ACTUATOR_IDS` entries.
 3. The final map is printed at boot for visibility (`[✓] Actuator ID map: ...`).
 
-This id is required for flow-rate uploads (`/hydro/flow-readings` expects a numeric `actuator_id`, not a GPIO pin or type string). If `main.py` ever needs to post a flow reading for a type missing from `ACTUATOR_IDS`, it logs a warning and skips that reading rather than sending a malformed payload — check that actuator registration succeeded if you see that warning repeatedly.
+This id is required for flow-rate uploads (`/hydro/flow-readings` expects a numeric `actuator_id`, not a GPIO pin or type string) and for reported-state acknowledgements (`/hydro/actuator/{actuator_id}/reported-state`). If `main.py` ever needs to post a flow reading for a type missing from `ACTUATOR_IDS`, it logs a warning and skips that reading rather than sending a malformed payload; likewise `report_pending_states()` keeps the acknowledgement pending — check that actuator registration succeeded if you see either warning repeatedly.
 
 ## Pin Mapping (Actual — matches `config.py` / `sensors.py` / `flow_sensor.py`)
 
@@ -92,7 +126,7 @@ This id is required for flow-rate uploads (`/hydro/flow-readings` expects a nume
 | :--- | :--- | :--- |
 | **DHT11 (Temp/Hum)** | GPIO 14 | Digital |
 | **EC Sensor** | GPIO 34 | Analog |
-| **Rain Sensor** | GPIO 35 | Analog |
+| **Rain Sensor** | GPIO 35 | Analog (disabled until wired — `RAIN_SENSOR_ENABLED = False`) |
 | **Pump Relay** | GPIO 25 | Active LOW |
 | **Fan Relay** | GPIO 23 | Active LOW |
 | **Light Relay** | GPIO 27 | Active LOW |
@@ -108,7 +142,9 @@ This id is required for flow-rate uploads (`/hydro/flow-readings` expects a nume
 | State | Set By | Read By | Purpose |
 | :--- | :--- | :--- | :--- |
 | `ACTUATOR_STATES` | `control.py::check_commands()` | `relay.py::update_relays()`, `oled_display.py` | Per-GPIO ON/OFF, authoritative for driving relays. |
+| `ACTUATOR_REASON` | `control.py::check_commands()` | `oled_display.py` | Per-GPIO `automation_reason` from the backend (e.g. `schedule`); drives the `S` / `^` icon on the OLED. |
 | `PUMP_SPEED` | `control.py::check_commands()` | `relay.py::update_relays()` | PWM duty (%) for mosfet-driven actuators (e.g. water pump). |
-| `ACTUATOR_IDS` | `actuators.py::register_actuators()` | `main.py` (flow-reading upload) | Maps actuator type → backend numeric id, needed to tag `/hydro/flow-readings` payloads. |
+| `ACTUATOR_IDS` | `actuators.py::register_actuators()` | `main.py` (flow-reading upload), `control.py::report_pending_states()` | Maps actuator type → backend numeric id, needed to tag `/hydro/flow-readings` payloads and reported-state URLs. |
+| `PENDING_STATE_REPORTS` | `main.py` (from `relay.update_relays()` results) | `control.py::report_pending_states()` | GPIO → latest apply result (`actuator`, `reported_state`, `error`) awaiting delivery to `/hydro/actuator/{id}/reported-state`. Entries are removed only on a 200/201; coalesces rapid changes per GPIO. |
 | `AUTO_MODE` | Static in `config.py` (currently never changed) | `main.py` (call site commented out) | Would enable/disable **local** fallback auto-control; not currently active. |
 | `BACKEND_MODE` | `control.py::check_commands()` | `oled_display.py` | Display-only summary (`AUTO` / `MAN` / `MIXED`) of what the **backend** reports per-actuator; reflects real manual overrides via `manual_state`. |
